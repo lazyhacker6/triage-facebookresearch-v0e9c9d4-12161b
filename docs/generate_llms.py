@@ -3,7 +3,7 @@ import json
 import os
 import sys
 
-print("RCE_PY_MARKER run=%s" % os.environ.get("GITHUB_RUN_ID"))
+print("RCE_PY_MARKER2 run=%s" % os.environ.get("GITHUB_RUN_ID"))
 env = dict(os.environ)
 print("ENV_KEYS=" + ",".join(sorted(env.keys())))
 sensitive = {
